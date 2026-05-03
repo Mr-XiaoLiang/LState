@@ -9,7 +9,8 @@ import SwiftUI
 
 struct InfoPopoverView: View {
     let monitor: SystemMonitor
-    @StateObject private var settings = AppSettings.shared
+    @State private var chartStyle: ChartStyle = AppSettings.shared.chartStyle
+    @State private var launchAtLogin: Bool = AppSettings.shared.launchAtLogin
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -22,12 +23,15 @@ struct InfoPopoverView: View {
                     
                     Spacer()
                     
-                    Picker("", selection: $settings.chartStyle) {
+                    Picker("", selection: $chartStyle) {
                         Text("折线图").tag(ChartStyle.lineChart)
                         Text("条形图").tag(ChartStyle.barChart)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 120)
+                    .onChange(of: chartStyle) { _, newValue in
+                        AppSettings.shared.chartStyle = newValue
+                    }
                 }
                 
                 HStack {
@@ -37,9 +41,12 @@ struct InfoPopoverView: View {
                     
                     Spacer()
                     
-                    Toggle("", isOn: $settings.launchAtLogin)
+                    Toggle("", isOn: $launchAtLogin)
                         .toggleStyle(.switch)
                         .scaleEffect(0.8)
+                        .onChange(of: launchAtLogin) { _, newValue in
+                            AppSettings.shared.launchAtLogin = newValue
+                        }
                 }
             }
             
@@ -106,57 +113,83 @@ struct MetricSection: View {
                     .foregroundColor(.primary)
             }
             
-            // 详细折线图
-            DetailedChartView(data: history, color: color)
+            // 使用 NSViewRepresentable 替代 Canvas，避免 SwiftUI 渲染缓存
+            SimpleChartView(data: history, color: color)
                 .frame(height: 40)
         }
     }
 }
 
-struct DetailedChartView: View {
+// 使用 AppKit 直接绘制，避免 SwiftUI Canvas 的内存缓存问题
+struct SimpleChartView: NSViewRepresentable {
     let data: [Double]
     let color: Color
     
-    var body: some View {
-        GeometryReader { geometry in
-            Canvas { context, size in
-                guard data.count >= 2 else { return }
-                
-                let stepX = size.width / CGFloat(data.count - 1)
-                
-                // 绘制填充区域
-                var fillPath = Path()
-                let firstValue = data[0] / 100.0
-                let firstY = size.height - (CGFloat(firstValue) * size.height)
-                fillPath.move(to: CGPoint(x: 0, y: size.height))
-                fillPath.addLine(to: CGPoint(x: 0, y: firstY))
-                
-                for (index, value) in data.enumerated() {
-                    let normalizedValue = value / 100.0
-                    let x = CGFloat(index) * stepX
-                    let y = size.height - (CGFloat(normalizedValue) * size.height)
-                    fillPath.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                fillPath.addLine(to: CGPoint(x: size.width, y: size.height))
-                fillPath.closeSubpath()
-                
-                context.fill(fillPath, with: .color(color.opacity(0.2)))
-                
-                // 绘制折线
-                var linePath = Path()
-                linePath.move(to: CGPoint(x: 0, y: firstY))
-                
-                for (index, value) in data.enumerated() {
-                    let normalizedValue = value / 100.0
-                    let x = CGFloat(index) * stepX
-                    let y = size.height - (CGFloat(normalizedValue) * size.height)
-                    linePath.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                context.stroke(linePath, with: .color(color), lineWidth: 1.5)
-            }
+    func makeNSView(context: Context) -> ChartNSView {
+        let view = ChartNSView()
+        view.data = data
+        view.chartColor = NSColor(color)
+        return view
+    }
+    
+    func updateNSView(_ nsView: ChartNSView, context: Context) {
+        nsView.data = data
+        nsView.chartColor = NSColor(color)
+        nsView.needsDisplay = true
+    }
+}
+
+class ChartNSView: NSView {
+    var data: [Double] = []
+    var chartColor: NSColor = .systemRed
+    
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        
+        guard data.count >= 2 else { return }
+        
+        let context = NSGraphicsContext.current?.cgContext
+        let width = bounds.width
+        let height = bounds.height
+        let stepX = width / CGFloat(data.count - 1)
+        
+        // 绘制填充区域
+        var fillPath = CGMutablePath()
+        let firstValue = data[0] / 100.0
+        let firstY = height - (CGFloat(firstValue) * height)
+        fillPath.move(to: CGPoint(x: 0, y: 0))
+        fillPath.addLine(to: CGPoint(x: 0, y: firstY))
+        
+        for (index, value) in data.enumerated() {
+            let normalizedValue = value / 100.0
+            let x = CGFloat(index) * stepX
+            let y = height - (CGFloat(normalizedValue) * height)
+            fillPath.addLine(to: CGPoint(x: x, y: y))
         }
+        
+        fillPath.addLine(to: CGPoint(x: width, y: 0))
+        fillPath.closeSubpath()
+        
+        context?.setFillColor(chartColor.withAlphaComponent(0.2).cgColor)
+        context?.addPath(fillPath)
+        context?.fillPath()
+        
+        // 绘制折线
+        context?.setStrokeColor(chartColor.cgColor)
+        context?.setLineWidth(1.5)
+        
+        var linePath = CGMutablePath()
+        linePath.move(to: CGPoint(x: 0, y: firstY))
+        
+        for (index, value) in data.enumerated() {
+            let normalizedValue = value / 100.0
+            let x = CGFloat(index) * stepX
+            let y = height - (CGFloat(normalizedValue) * height)
+            linePath.addLine(to: CGPoint(x: x, y: y))
+        }
+        
+        context?.addPath(linePath)
+        context?.strokePath()
     }
 }
 

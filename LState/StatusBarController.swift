@@ -23,6 +23,7 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     
     // 复用 popover 避免重复创建
     private var popover: NSPopover?
+    private var popoverCleanupTimer: Timer?
     
     init(monitor: SystemMonitor) {
         self.monitor = monitor
@@ -410,18 +411,42 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     // MARK: - NSPopoverDelegate
     
     func popoverDidClose(_ notification: Notification) {
-        // 清理 popover 引用，允许释放内存
-        popover?.contentViewController = nil
-        popover = nil
+        // 取消之前的清理定时器
+        popoverCleanupTimer?.invalidate()
+        
+        // 延迟 3 秒后清理资源，避免频繁打开/关闭时重复创建
+        popoverCleanupTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            self?.cleanupPopoverResources()
+        }
+    }
+    
+    private func cleanupPopoverResources() {
+        guard let popover = popover, !popover.isShown else { return }
+        
+        // 先关闭 popover 确保动画完成
+        popover.close()
+        
+
+        
+        // 清理 contentViewController 释放 SwiftUI 视图内存
+        popover.contentViewController = nil
+        self.popover = nil
+        
+        // 建议系统回收内存
+        autoreleasepool {
+            // 强制释放自动释放池中的对象
+        }
     }
     
     deinit {
         timer?.invalidate()
+        popoverCleanupTimer?.invalidate()
         monitor.stopMonitoring()
         DistributedNotificationCenter.default.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
         appearanceObserver?.invalidate()
         popover?.close()
+        popover?.contentViewController = nil
         popover = nil
     }
 }
