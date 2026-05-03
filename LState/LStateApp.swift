@@ -6,27 +6,24 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct LStateApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
+    @State private var monitor = SystemMonitor()
+    
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra {
+            InfoPopoverView(monitor: monitor)
+                .padding()
+                .onAppear {
+                    monitor.startMonitoring()
+                }
+                .onDisappear {
+                    monitor.stopMonitoring()
+                }
+        } label: {
+            StatusBarIconView(monitor: monitor)
         }
-        .modelContainer(sharedModelContainer)
+        .menuBarExtraStyle(.window)
     }
 }
