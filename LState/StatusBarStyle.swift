@@ -15,7 +15,9 @@ enum ChartStyle {
 
 // MARK: - 尺寸配置
 enum StatusBarMetrics {
-    static let iconWidth: CGFloat = 44
+    static let chartWidth: CGFloat = 44
+    static let networkWidth: CGFloat = 32
+    static let iconWidth: CGFloat = chartWidth + networkWidth
     static let iconHeight: CGFloat = 18
     static let chartHeight: CGFloat = 16
     static let bottomPadding: CGFloat = 1
@@ -23,6 +25,13 @@ enum StatusBarMetrics {
     static let borderWidth: CGFloat = 1.0
     static let lineWidth: CGFloat = 1.5
     static let chartInset: CGFloat = 1
+}
+
+// MARK: - 网速显示配置
+enum NetworkMetrics {
+    static let fontSize: CGFloat = 7
+    static let maxChars: Int = 6
+    static let textColor = NSColor.controlTextColor
 }
 
 // MARK: - 颜色配置协议

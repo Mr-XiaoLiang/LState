@@ -109,6 +109,9 @@ class StatusBarController: NSObject {
             drawBarChart(context: context, colors: colors)
         }
         
+        // 绘制网速
+        drawNetworkSpeed(context: context)
+        
         image.unlockFocus()
         image.isTemplate = false
         
@@ -123,7 +126,7 @@ class StatusBarController: NSObject {
         let rect = CGRect(
             x: 0.5,
             y: metrics.bottomPadding - 0.5,
-            width: metrics.iconWidth - 1,
+            width: metrics.chartWidth - 1,
             height: metrics.chartHeight + 1
         )
         let path = CGPath(
@@ -152,7 +155,7 @@ class StatusBarController: NSObject {
     ) {
         let insetHeight = metrics.chartHeight - 2 * metrics.chartInset
         let insetPadding = metrics.bottomPadding + metrics.chartInset
-        let insetWidth = metrics.iconWidth - 2 * metrics.chartInset
+        let insetWidth = metrics.chartWidth - 2 * metrics.chartInset
         let stepX = insetWidth / CGFloat(monitor.cpuHistory.count - 1)
         
         drawLine(
@@ -216,7 +219,7 @@ class StatusBarController: NSObject {
         let spacing = BarChartMetrics.barSpacing
         let labelWidth: CGFloat = 6.0
         let inset: CGFloat = 1.0
-        let maxBarWidth = StatusBarMetrics.iconWidth - labelWidth - 2 * inset
+        let maxBarWidth = StatusBarMetrics.chartWidth - labelWidth - 2 * inset
         
         // 获取当前值（取最新数据，如果没有则取0）
         let cpuValue = monitor.cpuHistory.last ?? 0
@@ -285,6 +288,87 @@ class StatusBarController: NSObject {
         context.textPosition = CGPoint(x: x, y: y)
         CTLineDraw(line, context)
         context.restoreGState()
+    }
+    
+    private func drawNetworkSpeed(context: CGContext) {
+        let uploadText = formatSpeed(monitor.metrics.uploadSpeed)
+        let downloadText = formatSpeed(monitor.metrics.downloadSpeed)
+        
+        let x = StatusBarMetrics.chartWidth
+        let width = StatusBarMetrics.networkWidth
+        let height = StatusBarMetrics.iconHeight
+        
+        // 上行文字位置（上半部分）
+        let uploadRect = CGRect(x: x, y: height / 2, width: width, height: height / 2)
+        drawNetworkText(context: context, text: uploadText, rect: uploadRect)
+        
+        // 下行文字位置（下半部分）
+        let downloadRect = CGRect(x: x, y: 0, width: width, height: height / 2)
+        drawNetworkText(context: context, text: downloadText, rect: downloadRect)
+    }
+    
+    private func drawNetworkText(context: CGContext, text: String, rect: CGRect) {
+        // 使用加粗字体
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: NetworkMetrics.fontSize, weight: .bold),
+            .foregroundColor: NetworkMetrics.textColor
+        ]
+        
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        let line = CTLineCreateWithAttributedString(attributedString)
+        
+        let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+        let x = rect.minX + (rect.width - bounds.width) / 2
+        let y = rect.midY - bounds.height / 2 - bounds.origin.y
+        
+        context.saveGState()
+        context.textPosition = CGPoint(x: x, y: y)
+        CTLineDraw(line, context)
+        context.restoreGState()
+    }
+    
+    private func formatSpeed(_ bytesPerSecond: Double) -> String {
+        let units = [("K", 1024.0), ("M", 1024.0 * 1024.0), ("G", 1024.0 * 1024.0 * 1024.0)]
+        let maxChars = NetworkMetrics.maxChars
+        
+        // 小于 1KB: " 123B/s" (6字符)
+        if bytesPerSecond < 1024 {
+            let value = Int(bytesPerSecond)
+            return String(format: "%3dB/s", value)
+        }
+        
+        // 找到合适的单位
+        for (index, (unit, divisor)) in units.enumerated() {
+            let value = bytesPerSecond / divisor
+            let nextDivisor = index < units.count - 1 ? units[index + 1].1 : Double.infinity
+            
+            if bytesPerSecond < nextDivisor {
+                // 计算格式: X.XXU/s, XX.XU/s, XXXU/s
+                // 小数点和单位都算字符
+                if value < 10 {
+                    // 1-9.99: "1.23k/s" (7字符) 或 "1.2k/s" (6字符)
+                    // 尝试两位小数，如果超长则一位小数
+                    let withTwoDecimal = String(format: "%.2f%@/s", value, unit)
+                    if withTwoDecimal.count <= maxChars {
+                        return withTwoDecimal
+                    }
+                    return String(format: "%.1f%@/s", value, unit)
+                } else if value < 100 {
+                    // 10-99.9: "12.3k/s" (7字符) 或 "12k/s" (5字符)
+                    let withOneDecimal = String(format: "%.1f%@/s", value, unit)
+                    if withOneDecimal.count <= maxChars {
+                        return withOneDecimal
+                    }
+                    return String(format: "%d%@/s", Int(value), unit)
+                } else if value < 1000 {
+                    // 100-999: "123k/s" (6字符)
+                    return String(format: "%d%@/s", Int(value), unit)
+                }
+            }
+        }
+        
+        // 超过 1TB/s（不太可能）
+        return "999G/s"
     }
     
     @objc private func showPopover() {
