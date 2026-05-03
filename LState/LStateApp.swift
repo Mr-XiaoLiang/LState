@@ -23,6 +23,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = SystemMonitor()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 隐藏 Dock 图标，作为纯菜单栏应用运行
+        NSApp.setActivationPolicy(.accessory)
+        
         statusBarController = StatusBarController(monitor: monitor)
     }
 }
