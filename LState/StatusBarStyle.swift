@@ -27,29 +27,27 @@ struct StatusBarColors {
     let border: NSColor
     let background: NSColor
     
-    static var current: StatusBarColors {
-        // 根据当前状态栏文字颜色判断
-        // 状态栏文字是白色 -> 使用浅色颜色
-        // 状态栏文字是黑色 -> 使用深色颜色
-        let isStatusBarDark = NSColor.controlTextColor.usingColorSpace(.sRGB)?.brightnessComponent ?? 0 > 0.5
-        return isStatusBarDark ? lightMode : darkMode
+    // 根据外观获取颜色配置
+    static func forAppearance(_ appearance: NSAppearance) -> StatusBarColors {
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark ? darkMode : lightMode
     }
     
-    // 深色边框（浅色模式状态栏）：深红、暗黄、墨绿
+    // 浅色模式状态栏（深色边框）：浅红、浅黄、蓝绿
     static let lightMode = StatusBarColors(
-        cpu: NSColor(red: 0.6, green: 0.1, blue: 0.1, alpha: 1.0),
-        memory: NSColor(red: 0.6, green: 0.5, blue: 0.0, alpha: 1.0),
-        gpu: NSColor(red: 0.0, green: 0.4, blue: 0.2, alpha: 1.0),
-        border: NSColor.controlTextColor,
-        background: NSColor.controlTextColor.withAlphaComponent(0.5)
-    )
-
-    // 浅色边框（深色模式状态栏）：浅红、浅黄、蓝绿
-    static let darkMode = StatusBarColors(
         cpu: NSColor(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0),
         memory: NSColor(red: 1.0, green: 0.8, blue: 0.5, alpha: 1.0),
         gpu: NSColor(red: 0.4, green: 0.9, blue: 0.8, alpha: 1.0),
-        border: NSColor.controlTextColor,
-        background: NSColor.controlTextColor.withAlphaComponent(0.5)
+        border: NSColor.black,
+        background: NSColor.black.withAlphaComponent(0.5)
+    )
+
+    // 深色模式状态栏（浅色边框）：莫奈色系 - 暗玫瑰、暗金、暗青
+    static let darkMode = StatusBarColors(
+        cpu: NSColor(red: 0.55, green: 0.25, blue: 0.25, alpha: 1.0),
+        memory: NSColor(red: 0.55, green: 0.45, blue: 0.20, alpha: 1.0),
+        gpu: NSColor(red: 0.15, green: 0.40, blue: 0.38, alpha: 1.0),
+        border: NSColor.white,
+        background: NSColor.white.withAlphaComponent(0.5)
     )
 }

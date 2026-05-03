@@ -36,6 +36,8 @@ class StatusBarController: NSObject {
         }
     }
     
+    private var appearanceObserver: NSKeyValueObservation?
+    
     private func setupAppearanceObserver() {
         // 监听系统主题变化
         DistributedNotificationCenter.default.addObserver(
@@ -45,31 +47,28 @@ class StatusBarController: NSObject {
             object: nil
         )
         
-        // 监听应用外观变化（包括状态栏色调）
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appearanceChanged),
-            name: NSNotification.Name("NSApplicationDidChangeScreenParametersNotification"),
-            object: nil
-        )
+        // KVO 监听状态栏按钮外观变化
+        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance, options: [.new, .initial]) { [weak self] _, _ in
+            self?.appearanceChanged()
+        }
     }
     
     @objc private func appearanceChanged() {
-        // 延迟刷新以确保外观已更新
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             self?.updateStatusBarImage()
         }
     }
     
     private func updateStatusBarImage() {
-        let image = createStatusBarImage()
+        let appearance = statusItem.button?.effectiveAppearance ?? NSAppearance.current ?? .init(named: .aqua)!
+        let image = createStatusBarImage(with: appearance)
         statusItem.button?.image = image
         statusItem.button?.imagePosition = .imageOnly
         statusItem.button?.imageScaling = .scaleProportionallyDown
     }
     
-    private func createStatusBarImage() -> NSImage {
-        let colors = StatusBarColors.current
+    private func createStatusBarImage(with appearance: NSAppearance) -> NSImage {
+        let colors = StatusBarColors.forAppearance(appearance)
         let metrics = StatusBarMetrics.self
         
         let image = NSImage(size: NSSize(width: metrics.iconWidth, height: metrics.iconHeight))
@@ -205,5 +204,6 @@ class StatusBarController: NSObject {
         timer?.invalidate()
         monitor.stopMonitoring()
         DistributedNotificationCenter.default.removeObserver(self)
+        appearanceObserver?.invalidate()
     }
 }
