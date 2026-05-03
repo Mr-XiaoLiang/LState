@@ -36,6 +36,8 @@ class SystemMonitor {
     var memoryHistory: [Double] = Array(repeating: 0, count: 60)
     var gpuHistory: [Double] = Array(repeating: 0, count: 60)
     
+
+    
     func startMonitoring() {
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateMetrics()
@@ -54,6 +56,15 @@ class SystemMonitor {
         let gpu = getGPUUsage()
         let network = getNetworkSpeed()
         
+        // 更新历史数据：移除最旧的，添加最新的
+        cpuHistory.removeFirst()
+        cpuHistory.append(cpu)
+        memoryHistory.removeFirst()
+        memoryHistory.append(memory)
+        gpuHistory.removeFirst()
+        gpuHistory.append(gpu)
+        
+        // 更新当前指标
         metrics = SystemMetrics(
             cpuUsage: cpu,
             memoryUsage: memory,
@@ -62,14 +73,6 @@ class SystemMonitor {
             downloadSpeed: network.download,
             timestamp: Date()
         )
-        
-        // 更新历史数据
-        cpuHistory.removeFirst()
-        cpuHistory.append(cpu)
-        memoryHistory.removeFirst()
-        memoryHistory.append(memory)
-        gpuHistory.removeFirst()
-        gpuHistory.append(gpu)
     }
     
     private func getCPUUsage() -> Double {

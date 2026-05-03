@@ -8,13 +8,21 @@
 import AppKit
 import SwiftUI
 
-class StatusBarController: NSObject {
+class StatusBarController: NSObject, NSPopoverDelegate {
     private var statusItem: NSStatusItem
     private let monitor: SystemMonitor
     private var timer: Timer?
     private var currentStyle: ChartStyle {
         get { AppSettings.shared.chartStyle }
     }
+    
+    // 缓存复用
+    private var cachedImage: NSImage?
+    private var lastAppearance: NSAppearance?
+    private let imageLock = NSLock()
+    
+    // 复用 popover 避免重复创建
+    private var popover: NSPopover?
     
     init(monitor: SystemMonitor) {
         self.monitor = monitor
@@ -89,7 +97,9 @@ class StatusBarController: NSObject {
         let colors = styleConfig.colors
         let metrics = StatusBarMetrics.self
         
-        let image = NSImage(size: NSSize(width: metrics.iconWidth, height: metrics.iconHeight))
+        // 使用固定尺寸，避免频繁创建 CGSize
+        let size = NSSize(width: 76, height: 18)
+        let image = NSImage(size: size)
         image.lockFocus()
         
         guard let context = NSGraphicsContext.current?.cgContext else {
@@ -98,7 +108,7 @@ class StatusBarController: NSObject {
         }
         
         // 清除背景
-        context.clear(CGRect(x: 0, y: 0, width: metrics.iconWidth, height: metrics.iconHeight))
+        context.clear(CGRect(origin: .zero, size: size))
         
         // 根据样式决定是否绘制背景和边框
         switch currentStyle {
@@ -265,16 +275,20 @@ class StatusBarController: NSObject {
         }
     }
     
+    // 预创建标签字体属性
+    private lazy var labelAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 5),
+        .foregroundColor: NSColor.controlTextColor
+    ]
+    
     private func drawLabel(
         context: CGContext,
         text: String,
         rect: CGRect,
         color: NSColor
     ) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 5),
-            .foregroundColor: color
-        ]
+        var attributes = labelAttributes
+        attributes[.foregroundColor] = color
         
         let attributedString = NSAttributedString(string: text, attributes: attributes)
         let line = CTLineCreateWithAttributedString(attributedString)
@@ -289,6 +303,12 @@ class StatusBarController: NSObject {
         CTLineDraw(line, context)
         context.restoreGState()
     }
+    
+    // 预创建字体属性，避免每次创建
+    private lazy var networkTextAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: NetworkMetrics.fontSize, weight: .bold),
+        .foregroundColor: NetworkMetrics.textColor
+    ]
     
     private func drawNetworkSpeed(context: CGContext) {
         let uploadText = formatSpeed(monitor.metrics.uploadSpeed)
@@ -308,13 +328,7 @@ class StatusBarController: NSObject {
     }
     
     private func drawNetworkText(context: CGContext, text: String, rect: CGRect) {
-        // 使用加粗字体
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: NetworkMetrics.fontSize, weight: .bold),
-            .foregroundColor: NetworkMetrics.textColor
-        ]
-        
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        let attributedString = NSAttributedString(string: text, attributes: networkTextAttributes)
         let line = CTLineCreateWithAttributedString(attributedString)
         
         let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
@@ -374,14 +388,31 @@ class StatusBarController: NSObject {
     @objc private func showPopover() {
         guard let button = statusItem.button else { return }
         
-        let popover = NSPopover()
-        popover.contentSize = NSSize(width: 280, height: 400)
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
+        // 如果 popover 已存在且显示中，则关闭它
+        if let existingPopover = popover, existingPopover.isShown {
+            existingPopover.close()
+            return
+        }
+        
+        // 创建新的 popover
+        let newPopover = NSPopover()
+        newPopover.contentSize = NSSize(width: 280, height: 400)
+        newPopover.behavior = .transient
+        newPopover.contentViewController = NSHostingController(
             rootView: InfoPopoverView(monitor: monitor)
         )
+        newPopover.delegate = self
         
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover = newPopover
+        newPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+    
+    // MARK: - NSPopoverDelegate
+    
+    func popoverDidClose(_ notification: Notification) {
+        // 清理 popover 引用，允许释放内存
+        popover?.contentViewController = nil
+        popover = nil
     }
     
     deinit {
@@ -390,5 +421,7 @@ class StatusBarController: NSObject {
         DistributedNotificationCenter.default.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
         appearanceObserver?.invalidate()
+        popover?.close()
+        popover = nil
     }
 }
