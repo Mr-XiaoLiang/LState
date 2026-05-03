@@ -9,21 +9,20 @@ import SwiftUI
 
 @main
 struct LStateApp: App {
-    @State private var monitor = SystemMonitor()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var body: some Scene {
-        MenuBarExtra {
-            InfoPopoverView(monitor: monitor)
-                .padding()
-                .onAppear {
-                    monitor.startMonitoring()
-                }
-                .onDisappear {
-                    monitor.stopMonitoring()
-                }
-        } label: {
-            StatusBarIconView(monitor: monitor)
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
+    }
+}
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var statusBarController: StatusBarController?
+    let monitor = SystemMonitor()
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusBarController = StatusBarController(monitor: monitor)
     }
 }

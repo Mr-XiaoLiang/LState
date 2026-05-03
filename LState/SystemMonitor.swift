@@ -37,7 +37,7 @@ class SystemMonitor {
     var gpuHistory: [Double] = Array(repeating: 0, count: 60)
     
     func startMonitoring() {
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateMetrics()
         }
         timer?.fire()
