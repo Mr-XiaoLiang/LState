@@ -39,6 +39,35 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         statusItem.button?.target = self
         statusItem.button?.action = #selector(showPopover)
         updateStatusBarImage()
+        
+        // 监听鼠标点击事件，用于点击外部关闭 popover
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            self?.handleGlobalMouseClick(event)
+        }
+    }
+    
+    private func handleGlobalMouseClick(_ event: NSEvent) {
+        guard let popover = popover, popover.isShown else { return }
+        
+        // 检查点击位置是否在 popover 窗口内
+        if let popoverWindow = popover.contentViewController?.view.window {
+            let clickLocation = event.locationInWindow
+            let popoverFrame = popoverWindow.frame
+            
+            // 转换坐标到屏幕坐标系进行比较
+            if let screen = popoverWindow.screen {
+                let screenClickLocation = CGPoint(
+                    x: clickLocation.x + (event.window?.frame.origin.x ?? 0),
+                    y: clickLocation.y + (event.window?.frame.origin.y ?? 0)
+                )
+                
+                if !popoverFrame.contains(screenClickLocation) {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.popover?.close()
+                    }
+                }
+            }
+        }
     }
     
     private func startUpdating() {
@@ -86,7 +115,7 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     }
     
     private func updateStatusBarImage() {
-        let appearance = statusItem.button?.effectiveAppearance ?? NSAppearance.current ?? .init(named: .aqua)!
+        let appearance = statusItem.button?.effectiveAppearance ?? .init(named: .aqua)!
         let image = createStatusBarImage(with: appearance)
         statusItem.button?.image = image
         statusItem.button?.imagePosition = .imageOnly
@@ -398,7 +427,8 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         // 创建新的 popover
         let newPopover = NSPopover()
         newPopover.contentSize = NSSize(width: 280, height: 400)
-        newPopover.behavior = .transient
+        // .transient 会在点击应用外区域时关闭，.semitransient 在点击应用内其他区域也会关闭
+        newPopover.behavior = .semitransient
         newPopover.contentViewController = NSHostingController(
             rootView: InfoPopoverView(monitor: monitor)
         )
@@ -406,6 +436,11 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         
         popover = newPopover
         newPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        
+        // 让 popover 窗口获取焦点
+        DispatchQueue.main.async {
+            newPopover.contentViewController?.view.window?.makeKey()
+        }
     }
     
     // MARK: - NSPopoverDelegate

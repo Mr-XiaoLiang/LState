@@ -154,7 +154,7 @@ class ChartNSView: NSView {
         let stepX = width / CGFloat(data.count - 1)
         
         // 绘制填充区域
-        var fillPath = CGMutablePath()
+        let fillPath = CGMutablePath()
         let firstValue = data[0] / 100.0
         let firstY = height - (CGFloat(firstValue) * height)
         fillPath.move(to: CGPoint(x: 0, y: 0))
@@ -178,7 +178,7 @@ class ChartNSView: NSView {
         context?.setStrokeColor(chartColor.cgColor)
         context?.setLineWidth(1.5)
         
-        var linePath = CGMutablePath()
+        let linePath = CGMutablePath()
         linePath.move(to: CGPoint(x: 0, y: firstY))
         
         for (index, value) in data.enumerated() {
