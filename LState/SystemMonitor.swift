@@ -118,10 +118,40 @@ class SystemMonitor {
             return 0
         }
         
-        let totalMemory = Double(stats.active_count + stats.inactive_count + stats.wire_count + stats.free_count) * Double(vm_page_size)
-        let usedMemory = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(vm_page_size)
+        // 获取物理内存总量
+        let totalMemory = Double(getPhysicalMemory())
+        
+        // 计算实际使用的内存（类似活动监视器的"已使用"）
+        // active: 活跃内存
+        // wire: 系统保留内存（无法被交换）
+        // compressed: 压缩内存（如果可用）
+        let active = Double(stats.active_count) * Double(vm_page_size)
+        let wired = Double(stats.wire_count) * Double(vm_page_size)
+        let compressed = Double(stats.compressor_page_count) * Double(vm_page_size)
+        
+        let usedMemory = active + wired + compressed
         
         return (usedMemory / totalMemory) * 100
+    }
+    
+    private func getPhysicalMemory() -> UInt64 {
+        var size: UInt64 = 0
+        var sizeLen = mach_msg_type_number_t(MemoryLayout<UInt64>.size / MemoryLayout<integer_t>.size)
+        
+        let result = withUnsafeMutablePointer(to: &size) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(sizeLen)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &sizeLen)
+            }
+        }
+        
+        // 如果上面的方法失败，使用 sysctl 获取
+        if result != KERN_SUCCESS {
+            var mib: [Int32] = [CTL_HW, HW_MEMSIZE]
+            var len = MemoryLayout<UInt64>.size
+            sysctl(&mib, 2, &size, &len, nil, 0)
+        }
+        
+        return size > 0 ? size : 16 * 1024 * 1024 * 1024 // 默认16GB
     }
     
     private func getGPUUsage() -> Double {

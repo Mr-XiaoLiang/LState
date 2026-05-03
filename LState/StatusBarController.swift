@@ -12,6 +12,9 @@ class StatusBarController: NSObject {
     private var statusItem: NSStatusItem
     private let monitor: SystemMonitor
     private var timer: Timer?
+    private var currentStyle: ChartStyle {
+        get { AppSettings.shared.chartStyle }
+    }
     
     init(monitor: SystemMonitor) {
         self.monitor = monitor
@@ -51,6 +54,20 @@ class StatusBarController: NSObject {
         appearanceObserver = statusItem.button?.observe(\.effectiveAppearance, options: [.new, .initial]) { [weak self] _, _ in
             self?.appearanceChanged()
         }
+        
+        // 监听图表样式变化
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(styleChanged),
+            name: .chartStyleChanged,
+            object: nil
+        )
+    }
+    
+    @objc private func styleChanged() {
+        DispatchQueue.main.async { [weak self] in
+            self?.updateStatusBarImage()
+        }
     }
     
     @objc private func appearanceChanged() {
@@ -68,7 +85,8 @@ class StatusBarController: NSObject {
     }
     
     private func createStatusBarImage(with appearance: NSAppearance) -> NSImage {
-        let colors = StatusBarColors.forAppearance(appearance)
+        let styleConfig = StatusBarStyle.configuration(for: currentStyle, appearance: appearance)
+        let colors = styleConfig.colors
         let metrics = StatusBarMetrics.self
         
         let image = NSImage(size: NSSize(width: metrics.iconWidth, height: metrics.iconHeight))
@@ -82,11 +100,14 @@ class StatusBarController: NSObject {
         // 清除背景
         context.clear(CGRect(x: 0, y: 0, width: metrics.iconWidth, height: metrics.iconHeight))
         
-        // 绘制背景和边框
-        drawBackgroundAndBorder(context: context, colors: colors, metrics: metrics)
-        
-        // 绘制折线
-        drawChartLines(context: context, colors: colors, metrics: metrics)
+        // 根据样式决定是否绘制背景和边框
+        switch currentStyle {
+        case .lineChart:
+            drawBackgroundAndBorder(context: context, colors: colors, metrics: metrics)
+            drawChartLines(context: context, colors: colors, metrics: metrics)
+        case .barChart:
+            drawBarChart(context: context, colors: colors)
+        }
         
         image.unlockFocus()
         image.isTemplate = false
@@ -96,7 +117,7 @@ class StatusBarController: NSObject {
     
     private func drawBackgroundAndBorder(
         context: CGContext,
-        colors: StatusBarColors,
+        colors: StyleColors,
         metrics: StatusBarMetrics.Type
     ) {
         let rect = CGRect(
@@ -126,7 +147,7 @@ class StatusBarController: NSObject {
     
     private func drawChartLines(
         context: CGContext,
-        colors: StatusBarColors,
+        colors: StyleColors,
         metrics: StatusBarMetrics.Type
     ) {
         let insetHeight = metrics.chartHeight - 2 * metrics.chartInset
@@ -187,6 +208,85 @@ class StatusBarController: NSObject {
         context.strokePath()
     }
     
+    private func drawBarChart(
+        context: CGContext,
+        colors: StyleColors
+    ) {
+        let barHeight = BarChartMetrics.barHeight
+        let spacing = BarChartMetrics.barSpacing
+        let labelWidth: CGFloat = 6.0
+        let inset: CGFloat = 1.0
+        let maxBarWidth = StatusBarMetrics.iconWidth - labelWidth - 2 * inset
+        
+        // 获取当前值（取最新数据，如果没有则取0）
+        let cpuValue = monitor.cpuHistory.last ?? 0
+        let gpuValue = monitor.gpuHistory.last ?? 0
+        let memoryValue = monitor.memoryHistory.last ?? 0
+        
+        // 从下往上绘制：内存(M)、GPU(G)、CPU(C)
+        let items = [
+            (value: memoryValue, color: colors.memory, label: "M"),
+            (value: gpuValue, color: colors.gpu, label: "G"),
+            (value: cpuValue, color: colors.cpu, label: "C")
+        ]
+        
+        for (index, item) in items.enumerated() {
+            let y = StatusBarMetrics.bottomPadding + CGFloat(index) * (barHeight + spacing)
+            let barWidth = maxBarWidth * CGFloat(item.value / 100.0)
+            
+            // 绘制标签
+            let labelRect = CGRect(x: inset, y: y, width: labelWidth, height: barHeight)
+            drawLabel(context: context, text: item.label, rect: labelRect, color: item.color)
+            
+            let barX = inset + labelWidth
+            
+            // 绘制背景槽（30%透明度）
+            let trackRect = CGRect(
+                x: barX,
+                y: y,
+                width: maxBarWidth,
+                height: barHeight
+            )
+            context.setFillColor(item.color.withAlphaComponent(0.3).cgColor)
+            context.fill(trackRect)
+            
+            // 绘制实际数值条形
+            let barRect = CGRect(
+                x: barX,
+                y: y,
+                width: barWidth,
+                height: barHeight
+            )
+            context.setFillColor(item.color.cgColor)
+            context.fill(barRect)
+        }
+    }
+    
+    private func drawLabel(
+        context: CGContext,
+        text: String,
+        rect: CGRect,
+        color: NSColor
+    ) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 5),
+            .foregroundColor: color
+        ]
+        
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
+        let line = CTLineCreateWithAttributedString(attributedString)
+        
+        // 计算文字尺寸以居中显示
+        let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+        let x = rect.midX - bounds.width / 2
+        let y = rect.midY - bounds.height / 2 - bounds.origin.y
+        
+        context.saveGState()
+        context.textPosition = CGPoint(x: x, y: y)
+        CTLineDraw(line, context)
+        context.restoreGState()
+    }
+    
     @objc private func showPopover() {
         guard let button = statusItem.button else { return }
         
@@ -204,6 +304,7 @@ class StatusBarController: NSObject {
         timer?.invalidate()
         monitor.stopMonitoring()
         DistributedNotificationCenter.default.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
         appearanceObserver?.invalidate()
     }
 }

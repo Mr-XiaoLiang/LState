@@ -9,9 +9,42 @@ import SwiftUI
 
 struct InfoPopoverView: View {
     let monitor: SystemMonitor
+    @StateObject private var settings = AppSettings.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // 设置区域
+            VStack(spacing: 12) {
+                HStack {
+                    Text("图表样式")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Picker("", selection: $settings.chartStyle) {
+                        Text("折线图").tag(ChartStyle.lineChart)
+                        Text("条形图").tag(ChartStyle.barChart)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 120)
+                }
+                
+                HStack {
+                    Text("开机自启动")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Toggle("", isOn: $settings.launchAtLogin)
+                        .toggleStyle(.switch)
+                        .scaleEffect(0.8)
+                }
+            }
+            
+            Divider()
+            
             // CPU 信息
             MetricSection(
                 title: "CPU",
