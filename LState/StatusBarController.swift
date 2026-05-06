@@ -150,7 +150,7 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         }
         
         // 绘制网速
-        drawNetworkSpeed(context: context)
+        drawNetworkSpeed(context: context, appearance: appearance)
         
         image.unlockFocus()
         image.isTemplate = false
@@ -334,13 +334,10 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         context.restoreGState()
     }
     
-    // 预创建字体属性，避免每次创建
-    private lazy var networkTextAttributes: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: NetworkMetrics.fontSize, weight: .bold),
-        .foregroundColor: NetworkMetrics.textColor
-    ]
+    // 预创建字体，颜色根据当前外观动态获取
+    private let networkFont = NSFont.monospacedDigitSystemFont(ofSize: NetworkMetrics.fontSize, weight: .bold)
     
-    private func drawNetworkSpeed(context: CGContext) {
+    private func drawNetworkSpeed(context: CGContext, appearance: NSAppearance) {
         let uploadText = formatSpeed(monitor.metrics.uploadSpeed)
         let downloadText = formatSpeed(monitor.metrics.downloadSpeed)
         
@@ -348,17 +345,29 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         let width = StatusBarMetrics.networkWidth
         let height = StatusBarMetrics.iconHeight
         
+        // 根据外观获取文字颜色
+        let textColor = textColorForAppearance(appearance)
+        
         // 上行文字位置（上半部分）
         let uploadRect = CGRect(x: x, y: height / 2, width: width, height: height / 2)
-        drawNetworkText(context: context, text: uploadText, rect: uploadRect)
+        drawNetworkText(context: context, text: uploadText, rect: uploadRect, color: textColor)
         
         // 下行文字位置（下半部分）
         let downloadRect = CGRect(x: x, y: 0, width: width, height: height / 2)
-        drawNetworkText(context: context, text: downloadText, rect: downloadRect)
+        drawNetworkText(context: context, text: downloadText, rect: downloadRect, color: textColor)
     }
     
-    private func drawNetworkText(context: CGContext, text: String, rect: CGRect) {
-        let attributedString = NSAttributedString(string: text, attributes: networkTextAttributes)
+    private func textColorForAppearance(_ appearance: NSAppearance) -> NSColor {
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark ? NSColor.white : NSColor.black
+    }
+    
+    private func drawNetworkText(context: CGContext, text: String, rect: CGRect, color: NSColor) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: networkFont,
+            .foregroundColor: color
+        ]
+        let attributedString = NSAttributedString(string: text, attributes: attributes)
         let line = CTLineCreateWithAttributedString(attributedString)
         
         let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
