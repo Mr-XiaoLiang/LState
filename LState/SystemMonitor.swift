@@ -21,7 +21,8 @@ struct SystemMetrics {
 @Observable
 class SystemMonitor {
     private var timer: Timer?
-    private var previousNetworkStats: (upload: UInt64, download: UInt64, timestamp: Date)?
+    // 每个接口的上次采样数据
+    private var lastInterfaceSamples: [String: (upload: UInt64, download: UInt64, timestamp: Date)] = [:]
     
     var metrics = SystemMetrics(
         cpuUsage: 0,
@@ -169,8 +170,10 @@ class SystemMonitor {
             return (0, 0)
         }
         
-        var totalUpload: UInt64 = 0
-        var totalDownload: UInt64 = 0
+        let now = Date()
+        var totalUploadSpeed: Double = 0
+        var totalDownloadSpeed: Double = 0
+        var currentInterfaces: Set<String> = []
         
         var ptr = firstAddr
         while ptr.pointee.ifa_next != nil {
@@ -179,9 +182,30 @@ class SystemMonitor {
             
             // 只统计主要网络接口
             if name.hasPrefix("en") || name.hasPrefix("wl") {
+                currentInterfaces.insert(name)
+                
                 if let data = interface.ifa_data?.assumingMemoryBound(to: if_data.self) {
-                    totalUpload += UInt64(data.pointee.ifi_obytes)
-                    totalDownload += UInt64(data.pointee.ifi_ibytes)
+                    let upload = UInt64(data.pointee.ifi_obytes)
+                    let download = UInt64(data.pointee.ifi_ibytes)
+                    
+                    // 计算单个接口的速度
+                    if let lastSample = lastInterfaceSamples[name] {
+                        let timeInterval = now.timeIntervalSince(lastSample.timestamp)
+                        // 合理的时间范围：0.1秒到10秒
+                        if timeInterval > 0.1 && timeInterval < 10 {
+                            // 正常情况：当前值 >= 上次值
+                            if upload >= lastSample.upload && download >= lastSample.download {
+                                let uploadDiff = upload - lastSample.upload
+                                let downloadDiff = download - lastSample.download
+                                totalUploadSpeed += Double(uploadDiff) / timeInterval
+                                totalDownloadSpeed += Double(downloadDiff) / timeInterval
+                            }
+                            // 如果当前值 < 上次值，说明接口重置了，这次不计算速度，只记录新值
+                        }
+                    }
+                    
+                    // 更新该接口的采样数据
+                    lastInterfaceSamples[name] = (upload, download, now)
                 }
             }
             ptr = interface.ifa_next!
@@ -189,21 +213,12 @@ class SystemMonitor {
         
         freeifaddrs(ifaddr)
         
-        let now = Date()
-        var uploadSpeed: Double = 0
-        var downloadSpeed: Double = 0
-        
-        if let previous = previousNetworkStats {
-            let timeInterval = now.timeIntervalSince(previous.timestamp)
-            if timeInterval > 0 {
-                uploadSpeed = Double(totalUpload - previous.upload) / timeInterval
-                downloadSpeed = Double(totalDownload - previous.download) / timeInterval
-            }
+        // 清理已不存在且超过60秒未更新的接口数据
+        lastInterfaceSamples = lastInterfaceSamples.filter { name, stats in
+            currentInterfaces.contains(name) || now.timeIntervalSince(stats.timestamp) < 60
         }
         
-        previousNetworkStats = (totalUpload, totalDownload, now)
-        
-        return (uploadSpeed, downloadSpeed)
+        return (totalUploadSpeed, totalDownloadSpeed)
     }
 }
 
