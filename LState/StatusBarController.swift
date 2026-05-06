@@ -115,7 +115,7 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     }
     
     private func updateStatusBarImage() {
-        let appearance = statusItem.button?.effectiveAppearance ?? .init(named: .aqua)!
+        let appearance = statusItem.button?.effectiveAppearance ?? NSAppearance(named: .aqua) ?? NSAppearance()
         let image = createStatusBarImage(with: appearance)
         statusItem.button?.image = image
         statusItem.button?.imagePosition = .imageOnly
@@ -196,7 +196,9 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         let insetHeight = metrics.chartHeight - 2 * metrics.chartInset
         let insetPadding = metrics.bottomPadding + metrics.chartInset
         let insetWidth = metrics.chartWidth - 2 * metrics.chartInset
-        let stepX = insetWidth / CGFloat(monitor.cpuHistory.count - 1)
+        let historyCount = monitor.cpuHistory.count
+        guard historyCount >= 2 else { return }
+        let stepX = insetWidth / CGFloat(historyCount - 1)
         
         drawLine(
             context: context,
