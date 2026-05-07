@@ -88,8 +88,8 @@ class StatusBarController: NSObject, NSPopoverDelegate {
             object: nil
         )
         
-        // KVO 监听状态栏按钮外观变化
-        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance, options: [.new, .initial]) { [weak self] _, _ in
+        // KVO 监听状态栏按钮外观变化（只监听新值变化，不监听初始值）
+        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             self?.appearanceChanged()
         }
         

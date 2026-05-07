@@ -164,6 +164,10 @@ class SystemMonitor {
         return Double.random(in: 10...50)
     }
     
+    // 缓存活跃接口列表，每10秒更新一次
+    private var activeInterfaces: [String] = []
+    private var lastInterfaceRefresh = Date.distantPast
+    
     private func getNetworkSpeed() -> (upload: Double, download: Double) {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
@@ -173,7 +177,13 @@ class SystemMonitor {
         let now = Date()
         var totalUploadSpeed: Double = 0
         var totalDownloadSpeed: Double = 0
-        var currentInterfaces: Set<String> = []
+        
+        // 每10秒刷新一次活跃接口列表
+        let shouldRefreshInterfaces = now.timeIntervalSince(lastInterfaceRefresh) > 10
+        var newActiveInterfaces: [String]?
+        if shouldRefreshInterfaces {
+            newActiveInterfaces = []
+        }
         
         var ptr = firstAddr
         while ptr.pointee.ifa_next != nil {
@@ -182,7 +192,15 @@ class SystemMonitor {
             
             // 只统计主要网络接口
             if name.hasPrefix("en") || name.hasPrefix("wl") {
-                currentInterfaces.insert(name)
+                if shouldRefreshInterfaces {
+                    newActiveInterfaces?.append(name)
+                }
+                
+                // 只处理已知的活跃接口（避免每次扫描所有接口）
+                guard activeInterfaces.isEmpty || activeInterfaces.contains(name) else {
+                    ptr = interface.ifa_next!
+                    continue
+                }
                 
                 if let data = interface.ifa_data?.assumingMemoryBound(to: if_data.self) {
                     let upload = UInt64(data.pointee.ifi_obytes)
@@ -200,7 +218,6 @@ class SystemMonitor {
                                 totalUploadSpeed += Double(uploadDiff) / timeInterval
                                 totalDownloadSpeed += Double(downloadDiff) / timeInterval
                             }
-                            // 如果当前值 < 上次值，说明接口重置了，这次不计算速度，只记录新值
                         }
                     }
                     
@@ -213,9 +230,16 @@ class SystemMonitor {
         
         freeifaddrs(ifaddr)
         
-        // 清理已不存在且超过60秒未更新的接口数据
-        lastInterfaceSamples = lastInterfaceSamples.filter { name, stats in
-            currentInterfaces.contains(name) || now.timeIntervalSince(stats.timestamp) < 60
+        // 更新活跃接口列表
+        if shouldRefreshInterfaces, let interfaces = newActiveInterfaces {
+            activeInterfaces = interfaces
+            lastInterfaceRefresh = now
+            
+            // 清理不再活跃的接口数据
+            let activeSet = Set(interfaces)
+            lastInterfaceSamples = lastInterfaceSamples.filter { name, _ in
+                activeSet.contains(name)
+            }
         }
         
         return (totalUploadSpeed, totalDownloadSpeed)
